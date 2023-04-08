@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from PIL import Image
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV
 from sklearn.metrics import accuracy_score
 from sklearn.svm import SVC, LinearSVC
 from sklearn.ensemble import GradientBoostingClassifier
@@ -18,7 +18,7 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision
 import torchvision.transforms as T
 
-dev_id = 2
+dev_id = 0
 torch.cuda.set_device(dev_id)
 device = torch.device(f"cuda:{dev_id}")
 
@@ -153,15 +153,12 @@ if __name__ == "__main__":
                     'gamma': ['scale', 'auto'] + [0.01, 0.1, 1, 10],
                     'coef0': [-1, 0, 1]}
     svm = SVC(random_state=42)
-    svm_grid_search = GridSearchCV(svm, svm_param_grid, cv=5, verbose=2)
-    svm_grid_search.fit(x_train, y_train)
-    svm_best_params = svm_grid_search.best_params_
-    # Train SVM with best hyperparameters
-    print("Training SVM with best hyperparameters")
-    svm_best = SVC(random_state=42, **svm_best_params, verbose=True)
-    svm_best.fit(x_train, y_train)
+    svm_rs = RandomizedSearchCV(svm, svm_param_grid,
+                                cv=5, n_iter=60, verbose=2, n_jobs=-1)
+    svm_rs.fit(x_train, y_train)
+    svm_best_params = svm_rs.best_params_
     # Compute the accuracy of the classifier
-    valid_preds = svm_best.predict(x_valid)
+    valid_preds = svm_rs.predict(x_valid)
     svm_acc = accuracy_score(y_valid, valid_preds)
     
     # Perform grid search for LinearSVC hyperparameters
@@ -172,13 +169,11 @@ if __name__ == "__main__":
                             'penalty': ['l1', 'l2'],
                             'tol': [1e-5, 1e-4, 1e-3]}
     linear_svc = LinearSVC(random_state=42, max_iter=10000)
-    linear_svc_grid_search = GridSearchCV(linear_svc, linear_svc_param_grid, cv=5, verbose=2)
-    linear_svc_grid_search.fit(x_train, y_train)
-    linear_svc_best_params = linear_svc_grid_search.best_params_
-    # Train LinearSVC with best hyperparameters
-    linear_svc_best = LinearSVC(random_state=42, verbose=2, **linear_svc_best_params)
-    linear_svc_best.fit(x_train, y_train)
-    linear_svc_pred = linear_svc_best.predict(x_valid)
+    linear_svc_rs = RandomizedSearchCV(linear_svc, linear_svc_param_grid,
+                                       n_iter=60, cv=5, verbose=2, n_jobs=-1)
+    linear_svc_rs.fit(x_train, y_train)
+    linear_svc_best_params = linear_svc_rs.best_params_
+    linear_svc_pred = linear_svc_rs.predict(x_valid)
     linear_svc_acc = accuracy_score(y_valid, linear_svc_pred)
     
     print("Tuning GBM")
@@ -191,13 +186,11 @@ if __name__ == "__main__":
                     'subsample': [0.5, 0.8, 1.0],
                     'max_features': ['sqrt', 'log2', None]}
     gbm = GradientBoostingClassifier(random_state=42)
-    gbm_grid_search = GridSearchCV(gbm, gbm_param_grid, cv=5, verbose=2)
-    gbm_grid_search.fit(x_train, y_train)
-    gbm_best_params = gbm_grid_search.best_params_
-    # Train GBM with best hyperparameters
-    gbm_best = GradientBoostingClassifier(random_state=42, verbose=2, **gbm_best_params)
-    gbm_best.fit(x_train, y_train)
-    gbm_pred = gbm_best.predict(x_valid)
+    gbm_rs = RandomizedSearchCV(gbm, gbm_param_grid,
+                                n_iter=60, cv=5, verbose=2, n_jobs=-1)
+    gbm_rs.fit(x_train, y_train)
+    gbm_best_params = gbm_rs.best_params_
+    gbm_pred = gbm_rs.predict(x_valid)
     gbm_acc = accuracy_score(y_valid, gbm_pred)
 
     print(f"SVM accuracy: {svm_acc:.3f}")
