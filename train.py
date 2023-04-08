@@ -14,7 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import OneCycleLR
 from torch.optim import SGD
 
-import torchvision
+from torchvision.models import densenet121
 import torchvision.transforms as T
 
 dev_id = 0
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     valid_dl = DataLoader(valid_ds, batch_size=batch_size, num_workers=24)
 
     output_shape = 250
-    model = torchvision.models.densenet121(pretrained=True)
+    model = densenet121(pretrained=True)
     for param in model.features.parameters():
         param.requires_grad = False
     model.classifier = nn.Linear(1024, output_shape)
@@ -304,7 +304,3 @@ if __name__ == "__main__":
     model = train_and_validate(exp2, model, train_dl, valid_dl,
                                criterion, optimizer, scheduler, num_epochs,
                                val_step=1)
-
-    # five-crop
-    # contours, edges fusion
-    # ensembling
