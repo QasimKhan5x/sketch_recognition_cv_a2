@@ -17,7 +17,7 @@ from torch.optim import SGD
 import torchvision
 import torchvision.transforms as T
 
-dev_id = 3
+dev_id = 0
 torch.cuda.set_device(dev_id)
 device = torch.device(f"cuda:{dev_id}")
 
@@ -38,15 +38,7 @@ def set_seed(seed):
 class SketchDataset(Dataset):
     def __init__(self, df_dir, imgs_dir, transform=None):
 
-        self.df = pd.read_csv(df_dir)
-
-        if "Train" in df_dir:
-            self.df = self.df.rename(
-                columns={"1": "image_name", "1.1": "category"})
-        elif "Validation" in df_dir:
-            self.df = self.df.rename(
-                columns={"41": "image_name", "1": "category"})
-
+        self.df = pd.read_csv(df_dir, names=["image_name", "category"])
         self.df['image_name'] = self.df['image_name'].map(str) + ".png"
 
         self.imgs_dir = imgs_dir
@@ -109,14 +101,22 @@ def train(model, train_loader, criterion, optimizer, scheduler, writer, epoch):
         labels = labels.to(device)
 
         optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
+
+        # five crop support
+        bs, ncrops, c, h, w = inputs.size()
+        # fuse batch size and ncrops
+        outputs = model(inputs.view(-1, c, h, w))
+        # avg over crops
+        outputs_avg = outputs.view(bs, ncrops, -1).mean(1)
+
+        # outputs = model(inputs)
+        loss = criterion(outputs_avg, labels)
         loss.backward()
         optimizer.step()
         scheduler.step()
 
         train_loss += loss.item() * inputs.size(0)
-        probs = torch.softmax(outputs, dim=1)
+        probs = torch.softmax(outputs_avg, dim=1)
         preds = torch.argmax(probs, dim=1)
         train_acc += torch.sum(preds == labels).item()
 
@@ -159,7 +159,7 @@ def plot_loss_acc(train_loss, train_acc, val_loss, val_acc, path):
         path (str): Path to save the figure.
     """
     # Create a subplot with 1 row and 2 columns
-    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(12, 8))
+    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))
 
     # Plot the training and validation losses
     axs[0].plot(train_loss, label='train')
@@ -186,7 +186,7 @@ def plot_loss_acc(train_loss, train_acc, val_loss, val_acc, path):
 
 
 def train_and_validate(exp_name, model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs, val_step):
-    writer = SummaryWriter()
+    writer = SummaryWriter(log_dir=f"runs/{exp_name}")
     best_val_acc = 0.0
     best_epoch = 0
     train_loss_history, train_acc_history, val_loss_history, val_acc_history = [], [], [], []
@@ -221,6 +221,22 @@ def train_and_validate(exp_name, model, train_loader, val_loader, criterion, opt
     return model
 
 
+class FiveCropTransform:
+    def __init__(self, size):
+        self.crop_transform = T.FiveCrop(size)
+
+    def __call__(self, img):
+        crops = self.crop_transform(img)
+        return [T.Compose([
+            T.Grayscale(3),
+            T.RandomHorizontalFlip(),
+            T.RandomAffine(35, translate=(0, 1/7)),
+            T.ToTensor(),
+            T.Normalize(global_mean, global_std),
+            T.RandomErasing(p=0.2)
+        ])(crop) for crop in crops]
+
+
 if __name__ == "__main__":
     set_seed(42)
 
@@ -229,13 +245,8 @@ if __name__ == "__main__":
 
     train_transform = T.Compose([
         T.Resize(256),
-        T.CenterCrop(224),
-        T.Grayscale(3),
-        T.RandomHorizontalFlip(),
-        T.RandomAffine(35, translate=(0, 1/7)),
-        T.ToTensor(),
-        T.Normalize(global_mean, global_std),
-        T.RandomErasing(p=0.2)
+        FiveCropTransform(224),
+        T.Lambda(lambda crops: torch.stack(crops))
     ])
     valid_transform = T.Compose([
         T.Resize(256),
@@ -250,6 +261,8 @@ if __name__ == "__main__":
     valid_ds = SketchDataset(df_dir="Data/Validation.csv",
                              imgs_dir="Data/Validation",
                              transform=valid_transform)
+    print("Number of training examples:", len(train_ds))
+    print("Number of validation examples:", len(valid_ds))
     batch_size = 128
     train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
                           pin_memory=True, num_workers=24)
@@ -268,19 +281,27 @@ if __name__ == "__main__":
     optimizer = SGD(model.parameters(), lr=3e-3,
                     momentum=0.9, weight_decay=5e-4)
     scheduler = OneCycleLR(optimizer, max_lr=0.1,
-                           epochs=num_epochs, steps_per_epoch=batch_size)
+                           epochs=num_epochs, steps_per_epoch=len(train_dl))
 
-    model = train_and_validate('densenet_fc+max_lr=0.1', model, train_dl, valid_dl,
-                               criterion, optimizer, scheduler, num_epochs,
-                               val_step=1)
+    exp1 = 'densenet_fc+fivecrop'
+    model = train_and_validate(exp1, model, train_dl, valid_dl, criterion,
+                               optimizer, scheduler, num_epochs, val_step=1)
 
+    # ============= experiment 2 ====================
+    exp2 = 'densenet_fc->full+fivecrop'
+    batch_size = 32
+    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                          pin_memory=True, num_workers=24)
+    valid_dl = DataLoader(valid_ds, batch_size=batch_size, num_workers=24)
+    ckpt = load_checkpoint(exp1 + "/best.pt")
+    model.load_state_dict(ckpt['model'])
     for param in model.parameters():
         param.requires_grad = True
     optimizer = SGD(model.parameters(), lr=3e-4,
                     momentum=0.9, weight_decay=5e-5)
-    scheduler = OneCycleLR(optimizer, max_lr=1e-1,
-                           epochs=num_epochs, steps_per_epoch=batch_size)
-    model = train_and_validate('densenet_fc->full+max_lr=0.1', model, train_dl, valid_dl,
+    scheduler = OneCycleLR(optimizer, max_lr=0.01,
+                           epochs=num_epochs, steps_per_epoch=len(train_dl))
+    model = train_and_validate(exp2, model, train_dl, valid_dl,
                                criterion, optimizer, scheduler, num_epochs,
                                val_step=1)
 
