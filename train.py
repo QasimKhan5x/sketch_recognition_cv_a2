@@ -284,8 +284,8 @@ if __name__ == "__main__":
                            epochs=num_epochs, steps_per_epoch=len(train_dl))
 
     exp1 = 'densenet_fc+fivecrop'
-    model = train_and_validate(exp1, model, train_dl, valid_dl, criterion,
-                               optimizer, scheduler, num_epochs, val_step=1)
+    # model = train_and_validate(exp1, model, train_dl, valid_dl, criterion,
+    #                            optimizer, scheduler, num_epochs, val_step=1)
 
     # ============= experiment 2 ====================
     exp2 = 'densenet_fc->full+fivecrop'
