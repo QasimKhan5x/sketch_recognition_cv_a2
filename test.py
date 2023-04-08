@@ -37,7 +37,6 @@ class SketchDataset(Dataset):
 
 
 def main(args):
-    torch.cuda.set_device(1)
     # mean and std for normalization
     train_mean = [0.02362, 0.02362, 0.02362]
     train_std = [0.1114, 0.1114, 0.1114]
