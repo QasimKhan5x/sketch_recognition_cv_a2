@@ -16,3 +16,7 @@ Run `test.py`
 - For `src`, provide the path to the folder containing image files
 - For `dst`, provide the name of the `.csv` file to be created
 - (optional) For `--ckpt`, provide the name of the downloaded `.ckpt` file (default is `"./weights.pt"`)
+
+Results are generated in the following format
+
+    image_name,id

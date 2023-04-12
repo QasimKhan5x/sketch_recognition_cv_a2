@@ -72,7 +72,7 @@ def main(args):
         pred = int(pred)
         row = pd.DataFrame({"image_name": [name], "category": [pred]})
         df = pd.concat([df, row])
-    df.to_csv(args.dst, index=False)
+    df.to_csv(args.dst, index=False, header=False)
 
 
 if __name__ == "__main__":
