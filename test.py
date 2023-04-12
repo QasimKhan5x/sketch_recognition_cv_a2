@@ -16,14 +16,14 @@ class SketchDataset(Dataset):
     def __init__(self, imgs_dir, transform=None):
 
         self.imgs_dir = imgs_dir
-        self.imgs = os.listdir(imgs_dir)
+        self.imgs = os.listdir(self.imgs_dir)
         self.transform = transform
 
     def __len__(self):
-        return len(os.listdir(self.imgs_dir))
+        return len(self.imgs)
 
     def __getitem__(self, idx):
-        image_name = self.imgs_dir[idx]
+        image_name = self.imgs[idx]
         image_path = os.path.join(self.imgs_dir, image_name)
         img = Image.open(image_path).convert("L")
 
@@ -76,12 +76,13 @@ def main(args):
 
 
 if __name__ == "__main__":
+    torch.cuda.set_device(3)
     parser = argparse.ArgumentParser()
     parser.add_argument("src", type=str,
                         help="path to input data (source files (folder containing images))")
     parser.add_argument("dst", type=str,
                         help="destination (similar CSV file format as given in ground truth))")
-    parser.add_argument("ckpt", type=str,
+    parser.add_argument("--ckpt", type=str, default="weights.pt",
                         help="path to model checkpoint")
     args = parser.parse_args()
 
